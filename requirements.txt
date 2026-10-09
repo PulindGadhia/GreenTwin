@@ -1,0 +1,8 @@
+fastapi==0.115.*
+uvicorn[standard]
+pvlib
+pillow
+numpy
+httpx
+python-multipart
+pytest

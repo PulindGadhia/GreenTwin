@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GreenTwin - AI Plant Doctor</title>
+<style>
+  :root{--g:#2f7d4f;--bg:#f4faf5;--card:#fff;--ink:#183222;--mut:#5b7565}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+  header{background:var(--g);color:#fff;padding:16px 20px}
+  header h1{margin:0;font-size:20px} header p{margin:2px 0 0;font-size:13px;opacity:.85}
+  main{max-width:960px;margin:20px auto;padding:0 14px;display:grid;gap:16px;grid-template-columns:1fr 1fr}
+  @media(max-width:760px){main{grid-template-columns:1fr}}
+  .card{background:var(--card);border-radius:12px;padding:16px;box-shadow:0 1px 4px #0001}
+  .full{grid-column:1/-1}
+  h2{margin:0 0 10px;font-size:16px;color:var(--g)}
+  label{display:block;font-size:12px;color:var(--mut);margin:8px 0 2px}
+  input,select,button{width:100%;padding:9px;border:1px solid #cfe0d4;border-radius:8px;font-size:14px}
+  button{background:var(--g);color:#fff;border:0;cursor:pointer;margin-top:12px;font-weight:600}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  img{max-width:100%;border-radius:8px}
+  .pill{display:inline-block;padding:3px 10px;border-radius:99px;font-size:12px;background:#e3f3e8;color:var(--g);margin:2px 4px 2px 0}
+  .warn{background:#fff3e0;color:#a85d00}
+  table{width:100%;border-collapse:collapse;font-size:13px} td,th{padding:5px;text-align:center;border-bottom:1px solid #eef3ef}
+  .good{background:#d7f0de}.mid{background:#fff4cc}.low{background:#fde0dd}
+  small{color:var(--mut)}
+</style>
+</head>
+<body>
+<header><h1>GreenTwin</h1><p>AI plant doctor: finds WHY a plant is sick, not just WHAT it has</p></header>
+<main>
+  <section class="card">
+    <h2>1. Leaf Doctor</h2>
+    <label>Leaf photo</label><input type="file" id="photo" accept="image/*" capture="environment">
+    <div class="row">
+      <div><label>Plant</label><select id="plant"><option>tomato</option><option>chilli</option><option>mint</option><option>basil</option><option>spinach</option></select></div>
+      <div><label>Balcony faces</label><select id="facing"><option>S</option><option>SE</option><option>SW</option><option>E</option><option>W</option><option>NE</option><option>NW</option><option>N</option></select></div>
+      <div><label>Waterings / week</label><input id="wpw" type="number" value="3" min="0" max="14"></div>
+      <div><label>Language</label><select id="lang"><option value="en">English</option><option value="hi">हिन्दी</option><option value="gu">ગુજરાતી</option></select></div>
+      <div><label>Pin code</label><input id="pin" value="360005"></div>
+      <div><label>Season</label><select id="season"><option>winter</option><option>summer</option><option>monsoon</option></select></div>
+    </div>
+    <button onclick="diagnose()">Diagnose</button>
+  </section>
+
+  <section class="card" id="result"><h2>Verdict</h2><small>Upload a leaf photo and press Diagnose.</small></section>
+
+  <section class="card">
+    <h2>2. Rain-Smart Water Budget</h2>
+    <div class="row">
+      <div><label>Pot size (litres)</label><input id="pot" type="number" value="10"></div>
+      <div><label>Soil</label><select id="soil"><option>loam</option><option>sandy</option><option>clay</option></select></div>
+    </div>
+    <button onclick="water()">Get today's water plan</button>
+    <div id="waterOut" style="margin-top:10px"></div>
+  </section>
+
+  <section class="card">
+    <h2>3. Balcony Sun-Map</h2>
+    <button onclick="sunmap()" style="margin-top:0">Show sun hours by direction</button>
+    <div id="sunOut" style="margin-top:10px"></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let LAT = 22.30, LON = 70.80;  // Rajkot default; replaced by GPS if allowed
+navigator.geolocation?.getCurrentPosition(p => { LAT = p.coords.latitude; LON = p.coords.longitude; });
+
+async function diagnose(){
+  const f = $('photo').files[0]; if(!f){ alert('Pick a leaf photo first'); return; }
+  const fd = new FormData();
+  fd.append('photo', f);
+  for (const [k,id] of [['plant','plant'],['facing','facing'],['season','season'],['waterings_per_week','wpw'],['pincode','pin'],['lang','lang']]) fd.append(k, $(id).value);
+  fd.append('lat', LAT); fd.append('lon', LON);
+  $('result').innerHTML = '<h2>Verdict</h2><small>Analysing...</small>';
+  const r = await (await fetch('/api/diagnose', {method:'POST', body: fd})).json();
+  const v = r.verdict, s = r.scan;
+  $('result').innerHTML = `<h2>Verdict</h2>
+    <p><b>${s.label}</b> <small>(${Math.round(s.confidence*100)}% scan confidence)</small></p>
+    <img src="data:image/png;base64,${s.heatmap_png_b64}" alt="heat-map of problem areas">
+    <small>Red = where the AI looked</small>
+    <p><b>Root cause: ${v.cause.replace('_',' ')}</b> <small>(${Math.round(v.confidence*100)}%)</small></p>
+    <p>${v.evidence.map(e=>`<span class="pill">${e}</span>`).join('')}</p>
+    <p>${v.fix}</p>
+    <p><small>Sun: ${r.sun_hours} h (${r.light}) · Weather: ${r.weather.temp_c}°C, ${r.weather.humidity}% humidity</small></p>
+    ${r.radar.map(a=>`<p class="pill warn">⚠ ${a.message}</p>`).join('')}`;
+}
+async function water(){
+  const q = new URLSearchParams({plant:$('plant').value, pot_litres:$('pot').value, soil:$('soil').value, lat:LAT, lon:LON});
+  const r = await (await fetch('/api/water?'+q)).json(), b = r.budget;
+  $('waterOut').innerHTML = `<p><b>${b.action.toUpperCase()}: ${b.ml} ml</b></p><small>${b.reason} · ${r.weather.temp_c}°C, rain ${r.weather.rain_mm} mm (${r.weather.source})</small>`;
+}
+async function sunmap(){
+  const r = await (await fetch(`/api/sunmap?lat=${LAT}&lon=${LON}`)).json();
+  const cls = h => h>=6?'good':h>=3?'mid':'low';
+  let t = '<table><tr><th>Facing</th><th>Summer</th><th>Monsoon</th><th>Winter</th></tr>';
+  for (const [d,s] of Object.entries(r.grid)) t += `<tr><td>${d}</td>` + ['summer','monsoon','winter'].map(k=>`<td class="${cls(s[k])}">${s[k]} h</td>`).join('') + '</tr>';
+  $('sunOut').innerHTML = t + `</table><small>Best winter facing: <b>${r.best_facing_winter}</b></small>`;
+}
+</script>
+</body>
+</html>
